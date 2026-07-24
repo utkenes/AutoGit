@@ -1,0 +1,2 @@
+"""Yardımcı işlevler."""
+
