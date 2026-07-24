@@ -1,0 +1,46 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "AutoGit"
+version = "0.1.0"
+description = "Güvenli, debounce tabanlı otomatik Git commit CLI aracı"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "AutoGit contributors" }]
+dependencies = [
+  "pydantic>=2.8",
+  "pydantic-settings>=2.4",
+  "rich>=13.7",
+  "typer>=0.12",
+  "watchdog>=4.0",
+]
+
+[project.optional-dependencies]
+dev = ["mypy>=1.11", "pytest>=8.3", "pytest-cov>=5.0", "ruff>=0.6"]
+
+[project.scripts]
+autogit = "autogit.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["autogit"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501", "B008", "SIM103", "UP042"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+exclude = ["tests"]

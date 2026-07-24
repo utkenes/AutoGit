@@ -1,0 +1,26 @@
+debounce_seconds = 60
+check_interval_seconds = 5
+auto_push = false
+run_tests = true
+run_lint = true
+run_type_check = false
+commit_message_provider = "local"
+
+[test]
+command = "python -m pytest"
+
+[lint]
+command = "python -m ruff check ."
+
+[type_check]
+command = "python -m mypy ."
+
+[security]
+block_env_files = true
+scan_secrets = true
+max_file_size_kb = 512
+scan_diff_only = false
+
+[watch]
+ignored_paths = [".git", ".autogit", ".venv", "venv", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "dist", "build", "node_modules"]
+
