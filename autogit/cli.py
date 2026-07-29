@@ -1,4 +1,4 @@
-"""AutoGit Typer komut satırı arayüzü."""
+"""AutoGit's Typer command line interface."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from rich.table import Table
 
 from autogit.config import config_path, update_config, write_default_config
 from autogit.container import build_container
-from autogit.domain.exceptions import AutoGitError
+from autogit.domain.exceptions import AutoGitError, PreStagedChangesError
 from autogit.domain.models import CheckState
 
 app = typer.Typer(help="Güvenli, debounce tabanlı otomatik Git commit aracı.", no_args_is_help=True)
@@ -26,6 +26,14 @@ def _container(path: Path) -> object:
     except AutoGitError as error:
         console.print(f"[red]Hata:[/] {error}")
         raise typer.Exit(1) from error
+
+
+def _print_pre_staged_error(error: PreStagedChangesError) -> None:
+    console.print("[red]HATA[/] AutoGit dışında stage edilmiş dosyalar bulundu:\n")
+    for path in error.files:
+        console.print(f"  {path}")
+    console.print("\nAutoGit mevcut staging area'yı değiştirmedi.")
+    console.print("Çözüm: git restore --staged .\nArdından `autogit commit` komutunu tekrar çalıştırın.")
 
 
 @app.command()
@@ -50,11 +58,28 @@ def init(path: Annotated[Path, typer.Option("--path", "-p", exists=True, file_ok
 
 
 @app.command()
-def commit(path: Annotated[Path, typer.Option("--path", "-p", exists=True, file_okay=False)] = Path.cwd()) -> None:
-    """Mevcut değişiklikler için güvenli tek seferlik commit akışını çalıştırır."""
+def commit(
+    path: Annotated[Path, typer.Option("--path", "-p", exists=True, file_okay=False)] = Path.cwd(),
+    dry_run: Annotated[bool, typer.Option("--dry-run", help="Git durumunu değiştirmeden commit planını göster.")] = False,
+) -> None:
+    """Güvenli tek seferlik commit akışını çalıştırır veya --dry-run ile önizler."""
     container = _container(path)
     try:
+        if dry_run:
+            plan = container.commit.preview()  # type: ignore[attr-defined]
+            console.print("[cyan]DRY RUN[/] Git durumu değiştirilmedi.")
+            console.print("Stage edilecek dosyalar:")
+            for file in plan.candidates:
+                console.print(f"  {file.status.value}: {file.path}")
+            if plan.excluded_files:
+                console.print("Hariç tutulan dosyalar:")
+                for file in plan.excluded_files:
+                    console.print(f"  {file.status.value}: {file.path}")
+            return
         result, push = container.commit.execute()  # type: ignore[attr-defined]
+    except PreStagedChangesError as error:
+        _print_pre_staged_error(error)
+        raise typer.Exit(1) from error
     except AutoGitError as error:
         console.print(f"[yellow]{error}[/]")
         raise typer.Exit(1) from error
@@ -126,4 +151,3 @@ def doctor(path: Annotated[Path, typer.Option("--path", "-p", exists=True, file_
 
 if __name__ == "__main__":
     app()
-
