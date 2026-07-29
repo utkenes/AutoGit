@@ -1,5 +1,26 @@
 # AutoGit
 
+## Commit güvenliği
+
+AutoGit, her commit öncesinde (watch mode dâhil) repository'nin normal bir
+branch üzerinde ve `HEAD`'inin mevcut olduğunu, ayrıca devam eden merge, rebase,
+cherry-pick veya revert işlemi bulunmadığını doğrular. Repository güvenli değilse
+kalite kontrollerini çalıştırmadan durur.
+
+Kullanıcı önceden dosya stage etmişse AutoGit çalışmaz. Mevcut staging area'yı
+asla temizlemez veya değiştirmez; tekrar denemeden önce dosyaları kendiniz
+`git restore --staged .` ile unstage edin.
+
+`autogit commit --dry-run`, stage edilecek ve hariç tutulacak dosyaları gösterir.
+Önizleme stage işlemi, kalite kontrolü, commit veya başka bir Git değişikliği
+yapmaz.
+
+Gerçek committe aday dosyalar önce stage edilir; secret taraması staged Git blob
+içeriğini okur. Böylece taranan içerik commitlenen içerikle aynıdır. Tarama,
+kalite kontrolü veya mesaj üretimi başarısız olursa AutoGit yalnızca kendi stage
+ettiği dosyaları unstage eder. Silinmiş ve binary dosyalar güvenle commit kapsamına
+alınır, ancak içerik taramasında atlanır.
+
 AutoGit, seçtiğiniz Git repository’sini izleyen; değişiklikler durulduktan sonra secret taraması ve kalite kontrolleri yapıp güvenli bir yerel commit oluşturan Python CLI aracıdır. Varsayılan olarak push yapmaz.
 
 ## Özellikler
@@ -108,4 +129,3 @@ Katkılar için yeni davranışa test ekleyin, Ruff/Mypy/Pytest çalıştırın 
 ## Bilinen sınırlamalar
 
 İlk MVP yalnızca local mesaj sağlayıcısını içerir. Secret taraması sezgiseldir ve binary/büyük dosyaları atlar. Watchdog’un işletim sistemi dosya olaylarına bağımlı yapısı nedeniyle çok yüksek frekanslı değişimlerde olaylar birleşebilir; debounce davranışı yine korunur.
-
