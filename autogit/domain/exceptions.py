@@ -13,6 +13,18 @@ class RepositoryNotFoundError(AutoGitError):
     """Hedef klasör Git deposu olmadığında oluşur."""
 
 
+class RepositoryUnsafeError(AutoGitError):
+    """Repository is not in a safe state for an automatic commit."""
+
+
+class PreStagedChangesError(AutoGitError):
+    """Changes had already been staged before AutoGit started."""
+
+    def __init__(self, files: list[str]) -> None:
+        self.files = files
+        super().__init__("AutoGit dışında stage edilmiş dosyalar bulundu.")
+
+
 class ConfigurationError(AutoGitError):
     """Yapılandırma okunamadığında veya doğrulanamadığında oluşur."""
 
@@ -39,4 +51,3 @@ class CommitMessageError(AutoGitError):
 
 class WatcherError(AutoGitError):
     """Dosya izleyici kurulamadığında oluşur."""
-

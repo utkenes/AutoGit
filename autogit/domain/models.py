@@ -12,8 +12,8 @@ class FileStatus(str, Enum):
     MODIFIED = "modified"
     DELETED = "deleted"
     RENAMED = "renamed"
+    COPIED = "copied"
     UNTRACKED = "untracked"
-    STAGED = "staged"
 
 
 class CheckState(str, Enum):
@@ -26,12 +26,22 @@ class CheckState(str, Enum):
 class ChangedFile:
     path: Path
     status: FileStatus
+    old_path: Path | None = None
     staged: bool = False
+    unstaged: bool = False
 
 
 @dataclass(frozen=True)
 class GitStatus:
     changed_files: list[ChangedFile] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class CommitPlan:
+    """A non-mutating description of the files an AutoGit commit would include."""
+
+    candidates: list[ChangedFile]
+    excluded_files: list[ChangedFile]
 
 
 @dataclass(frozen=True)
@@ -97,4 +107,3 @@ class DoctorReport:
 class WatchEvent:
     path: Path
     event_type: str
-
