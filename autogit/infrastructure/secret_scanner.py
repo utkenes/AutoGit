@@ -1,4 +1,4 @@
-"""Dosya içeriklerinde sırlara benzeyen değerleri maskeli şekilde bulur."""
+"""Find likely secrets while keeping their values masked."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ class SecretPattern:
 
 
 class SecretScanner:
-    """Bilinen anahtar biçimlerini tarar; değeri asla sonuçta saklamaz."""
+    """Known secret patterns; findings never retain the unmasked value."""
 
     patterns = (
         SecretPattern("OpenAI API key", re.compile(r"\bsk-(?:proj-)?[A-Za-z0-9_-]{12,}\b")),
@@ -41,7 +41,24 @@ class SecretScanner:
         ),
     )
 
+    @staticmethod
+    def is_binary_content(content: bytes) -> bool:
+        return b"\0" in content
+
+    def scan_content(self, *, path: Path, content: bytes) -> list[SecretFinding]:
+        """Scan exactly the supplied content, normally a staged Git blob."""
+        if self.is_binary_content(content):
+            return []
+        findings: list[SecretFinding] = []
+        for number, line in enumerate(content.decode("utf-8", errors="replace").splitlines(), start=1):
+            for pattern in self.patterns:
+                match = pattern.expression.search(line)
+                if match:
+                    findings.append(SecretFinding(path, number, pattern.name, mask_secret(match.group(0))))
+        return findings
+
     def scan_files(self, root: Path, files: list[Path], max_size_kb: int) -> list[SecretFinding]:
+        """Compatibility helper for non-commit checks that scan the worktree."""
         findings: list[SecretFinding] = []
         for relative_path in files:
             full_path = root / relative_path
@@ -49,20 +66,15 @@ class SecretScanner:
                 continue
             if full_path.stat().st_size > max_size_kb * 1024:
                 continue
-            findings.extend(self.scan_file(root, relative_path))
+            try:
+                findings.extend(self.scan_content(path=relative_path, content=full_path.read_bytes()))
+            except OSError:
+                continue
         return findings
 
     def scan_file(self, root: Path, relative_path: Path) -> list[SecretFinding]:
         full_path = root / relative_path
         try:
-            lines = full_path.read_text(encoding="utf-8", errors="replace").splitlines()
+            return self.scan_content(path=relative_path, content=full_path.read_bytes())
         except OSError:
             return []
-        findings: list[SecretFinding] = []
-        for number, line in enumerate(lines, start=1):
-            for pattern in self.patterns:
-                match = pattern.expression.search(line)
-                if match:
-                    findings.append(SecretFinding(relative_path, number, pattern.name, mask_secret(match.group(0))))
-        return findings
-
