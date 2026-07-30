@@ -53,6 +53,7 @@ class CommitGroup:
     commit_type: str
     scope: str | None
     reason: str
+    confidence: float = 0.0
 
 
 @dataclass(frozen=True)
