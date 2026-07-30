@@ -1,67 +1,81 @@
 # AutoGit
 
-AutoGit, değişiklikleri analiz eden, mantıksal commit planı sunan ve kullanıcı
-onayı olmadan hiçbir commit veya push yapmayan kontrollü bir Git asistanıdır.
+Plan clean commits, run quality checks, and push safely.
 
-## Hızlı başlangıç
+AutoGit is a local-first Git assistant for developers who want clean, reviewed
+commits without giving a tool unchecked control of their repository.
 
-```powershell
-cd "D:\ornek-proje"
+## What it is (and is not)
+
+AutoGit analyzes local changes, proposes Conventional Commit groups, runs
+enabled quality checks, and waits for approval before committing or pushing.
+Unlike GitHub Desktop, it focuses on explaining and planning a commit workflow;
+it does not replace a graphical Git client or host repositories.
+
+## Install
+
+```bash
+pipx install autogit
+# or, from a checkout during the beta
+pip install .
+```
+
+Python 3.12+ is required. Verify the installation with `autogit --version`.
+
+## 60-second quick start
+
+```bash
+cd path/to/your/git-project
 autogit start
 ```
 
-`start` repository'yi ve güvenlik durumunu denetler. İlk çalıştırmada gerekli
-olursa Git repository/config kurulumu ve isteğe bağlı test-lint tespiti için
-yönlendirme yapar. Ardından önerilen commit gruplarını gösterir:
+Review the proposed groups, then choose approve, edit messages, or cancel.
+AutoGit only creates local commits after explicit approval. Push always requires
+a separate confirmation.
 
-```text
-[A] Onayla
-[E] Mesajları düzenle
-[C] İptal
-```
+## Commands
 
-Onaydan sonra kalite ve secret kontrolleri çalışır. Başarılı gruplar sırayla
-local commit olur; push için en sonda ayrıca onay istenir.
+- `autogit start` — guided planning, checks, approved commits, and optional push.
+- `autogit start --dry-run` — show the plan, checks, and push target without
+  changing Git state or config.
+- `autogit start --auto` — accepts the plan and may apply a low-risk lint fix;
+  it still cannot push, change remotes, install dependencies, or perform
+  destructive operations without the user.
+- `autogit plan --json` — emit a machine-readable plan with no Rich/log output.
+- `autogit undo` — undo the last unpushed AutoGit workflow when HEAD and the
+  working tree are unchanged.
+- `autogit status`, `autogit doctor`, and `autogit config` — inspect the setup.
 
-## Güvenlik
+`autogit watch` and `autogit commit` remain legacy commands; `start` is the
+recommended workflow.
 
-- Önceden stage edilmiş dosyalar varsa işlem durur ve staging area değişmez.
-- Merge, rebase, cherry-pick, revert, detached HEAD ve Git `index.lock`
-  durumlarında commit yapılmaz.
-- Aynı repository için yalnızca bir AutoGit akışı `.autogit/autogit.lock` ile
-  yürür. Git'in kendi lock dosyaları asla silinmez.
-- Secret taraması stage edilmiş blob içeriğinde yapılır. Hata halinde yalnızca
-  AutoGit'in stage ettiği dosyalar geri alınır.
-- `.git` ve `.autogit` içeriği commit adayı veya watcher girdisi değildir.
+## Quality recovery
 
-## Komutlar
+When a supported linter fails, AutoGit can suggest a low-risk fix such as
+`python -m ruff check . --fix`. It shows the command and requires approval
+unless `--auto` was selected. Test logic failures are never automatically
+rewritten. A workflow applies an automatic fix at most once by default.
 
-| Komut | Açıklama |
-| --- | --- |
-| `autogit start` | Önerilen ana, onaylı planlama ve commit akışı. |
-| `autogit status` | Repository ve yapılandırma özetini gösterir. |
-| `autogit doctor` | Ortam ve repository sağlığını denetler. |
-| `autogit config` | Geçerli yapılandırmayı gösterir/değiştirir. |
-| `autogit commit` | Eski tek-commit akışını korur; `--dry-run` destekler. |
-| `autogit watch` | Eski watcher komutudur; ana kullanım akışının parçası değildir. |
+## Safety and privacy
 
-## Varsayılanlar
+- Existing staged files stop the workflow and are never cleared.
+- Merge/rebase/cherry-pick/revert, detached HEAD, Git `index.lock`, and another
+  AutoGit workflow block commits.
+- Secret scanning runs on staged content and masks findings.
+- `.git` and `.autogit` are excluded from commit candidates.
+- No source code, diffs, repository URLs, or secrets are sent to an external
+  server in v0.1.0; analysis runs locally.
 
-İlk kurulumda `run_tests`, `run_lint` ve `auto_push` kapalıdır. AutoGit Python,
-JavaScript ve lint altyapısını algıladığında bunları etkinleştirmek için onay
-ister. Test veya lint altyapısı yoksa komut çalıştırılmaz.
+## Supported checks
 
-## Geliştirme
+AutoGit can detect Python tests, JavaScript test scripts, Ruff, ESLint, and
+Biome. All test/lint/auto-fix/commit/push options are disabled by default until
+the user approves them.
 
-```bash
-python -m pytest -q
-python -m pytest --cov=autogit --cov-report=term-missing
-python -m ruff check .
-python -m mypy .
-```
+## Beta limitations and feedback
 
-## Bilinen sınırlar
+Commit grouping is deterministic rather than AI-generated. Remote divergence is
+blocked conservatively, and AutoGit does not create GitHub repositories. Please
+include the command, sanitized output, and platform details in beta feedback.
 
-Commit planlayıcı ilk sürümde deterministik kurallar kullanır; belirsiz source
-değişikliklerinde güvenli, küçük bir grup tercih eder. GitHub API üzerinden
-remote repository oluşturma ve AI tabanlı gruplama henüz eklenmemiştir.
+See [CHANGELOG.md](CHANGELOG.md) for release notes.
