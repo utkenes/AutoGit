@@ -13,6 +13,9 @@ from autogit.domain.exceptions import ConfigurationError
 DEFAULT_CONFIG = """debounce_seconds = 60
 check_interval_seconds = 5
 auto_push = false
+auto_fix = false
+auto_commit = false
+max_fix_attempts = 1
 run_tests = false
 run_lint = false
 run_type_check = false
@@ -57,6 +60,9 @@ class AutoGitConfig(BaseModel):
     debounce_seconds: int = Field(default=60, ge=1, le=86_400)
     check_interval_seconds: int = Field(default=5, ge=1, le=3_600)
     auto_push: bool = False
+    auto_fix: bool = False
+    auto_commit: bool = False
+    max_fix_attempts: int = Field(default=1, ge=0, le=3)
     run_tests: bool = False
     run_lint: bool = False
     run_type_check: bool = False
@@ -109,6 +115,9 @@ def update_config(repository_root: Path, key: str, raw_value: str) -> AutoGitCon
         "debounce_seconds": int,
         "check_interval_seconds": int,
         "auto_push": bool,
+        "auto_fix": bool,
+        "auto_commit": bool,
+        "max_fix_attempts": int,
         "run_tests": bool,
         "run_lint": bool,
         "run_type_check": bool,
@@ -157,6 +166,9 @@ def _write_config(repository_root: Path, config: AutoGitConfig) -> None:
         "debounce_seconds": str(config.debounce_seconds),
         "check_interval_seconds": str(config.check_interval_seconds),
         "auto_push": str(config.auto_push).lower(),
+        "auto_fix": str(config.auto_fix).lower(),
+        "auto_commit": str(config.auto_commit).lower(),
+        "max_fix_attempts": str(config.max_fix_attempts),
         "run_tests": str(config.run_tests).lower(),
         "run_lint": str(config.run_lint).lower(),
         "run_type_check": str(config.run_type_check).lower(),

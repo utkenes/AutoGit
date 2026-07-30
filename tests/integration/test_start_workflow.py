@@ -68,6 +68,38 @@ def test_start_edits_message(repository: Path) -> None:
     assert subject == "feat: custom message"
 
 
+def test_start_dry_run_keeps_head_and_index(repository: Path) -> None:
+    (repository / "feature.py").write_text("value = 1\n", encoding="utf-8")
+    before = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repository, check=True, capture_output=True, text=True).stdout
+    result = runner.invoke(app, ["start", "--path", str(repository), "--dry-run"])
+    after = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repository, check=True, capture_output=True, text=True).stdout
+    staged = subprocess.run(["git", "diff", "--cached", "--name-only"], cwd=repository, check=True, capture_output=True, text=True).stdout
+    assert result.exit_code == 0
+    assert "Dry run tamamlandı" in result.output
+    assert before == after
+    assert staged == ""
+
+
+def test_plan_json_is_machine_readable(repository: Path) -> None:
+    (repository / "feature.py").write_text("value = 1\n", encoding="utf-8")
+    result = runner.invoke(app, ["plan", "--path", str(repository), "--json"])
+    import json
+
+    payload = json.loads(result.output)
+    assert payload["repository"]["root"] == str(repository)
+    assert payload["groups"][0]["type"] == "feat"
+
+
+def test_undo_restores_last_unpushed_start_workflow(repository: Path) -> None:
+    (repository / "feature.py").write_text("value = 1\n", encoding="utf-8")
+    created = runner.invoke(app, ["start", "--path", str(repository)], input="n\nA\n")
+    assert created.exit_code == 0
+    undone = runner.invoke(app, ["undo", "--path", str(repository)], input="y\n")
+    assert undone.exit_code == 0
+    assert _commit_count(repository) == 1
+    assert (repository / "feature.py").exists()
+
+
 def _commit_count(root: Path) -> int:
     return int(
         subprocess.run(["git", "rev-list", "--count", "HEAD"], cwd=root, check=True, capture_output=True, text=True).stdout
