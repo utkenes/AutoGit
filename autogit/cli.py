@@ -85,7 +85,44 @@ def commit(
         raise typer.Exit(1) from error
     console.print(f"[green]Commit oluşturuldu:[/] {result.commit_hash[:12]} {result.message}")
     console.print(push.detail)
+@app.command()
+def start(
+    path: Annotated[
+        Path,
+        typer.Option("--path", "-p", exists=True, file_okay=False),
+    ] = Path.cwd(),
+) -> None:
+    """Initialize AutoGit when needed and start watching the repository."""
+    container = _container(path)
+    root = container.root  # type: ignore[attr-defined]
 
+    if not config_path(root).exists():
+        target = write_default_config(root)
+        (root / ".autogit" / "logs").mkdir(parents=True, exist_ok=True)
+
+        console.print(f"[green]Config created:[/] {target}")
+
+    report = container.doctor.run()  # type: ignore[attr-defined]
+    errors = [
+        check
+        for check in report.checks
+        if check.state is CheckState.ERROR
+    ]
+
+    if errors:
+        console.print("[red]AutoGit could not start.[/]")
+        for check in errors:
+            console.print(f"  [red]{check.name}:[/] {check.detail}")
+        raise typer.Exit(1)
+
+    console.print(f"[cyan]AutoGit started:[/] {root}")
+    console.print("Repository changes are being watched.")
+    console.print("Press Ctrl+C to stop.")
+
+    try:
+        container.watch.run()  # type: ignore[attr-defined]
+    except KeyboardInterrupt:
+        console.print("\n[yellow]AutoGit stopped.[/]")
 
 @app.command()
 def watch(path: Annotated[Path, typer.Option("--path", "-p", exists=True, file_okay=False)] = Path.cwd()) -> None:
