@@ -107,6 +107,16 @@ class GitService:
         upstream = self._run("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}", check=False)
         return upstream or None
 
+    def get_ahead_behind(self) -> tuple[int, int] | None:
+        if not self.get_upstream_branch():
+            return None
+        value = self._run("rev-list", "--left-right", "--count", "@{upstream}...HEAD", check=False)
+        try:
+            remote_ahead, local_ahead = (int(item) for item in value.split())
+        except ValueError:
+            return None
+        return remote_ahead, local_ahead
+
     def get_status(self) -> GitStatus:
         raw_status = self._run_bytes("status", "--porcelain=v1", "-z", "-uall")
         return GitStatus(self.status_parser.parse(raw_status))
@@ -188,6 +198,13 @@ class GitService:
     def commit(self, message: str) -> str:
         self._run("commit", "-m", message)
         return self._run("rev-parse", "HEAD")
+
+    def get_head(self) -> str | None:
+        value = self._run("rev-parse", "--verify", "HEAD", check=False)
+        return value or None
+
+    def reset_mixed(self, target: str) -> None:
+        self._run("reset", "--mixed", target)
 
     def push(self) -> None:
         self._run("push")
