@@ -1,8 +1,8 @@
 debounce_seconds = 60
 check_interval_seconds = 5
 auto_push = false
-run_tests = true
-run_lint = true
+run_tests = false
+run_lint = false
 run_type_check = false
 commit_message_provider = "local"
 
@@ -23,4 +23,3 @@ scan_diff_only = false
 
 [watch]
 ignored_paths = [".git", ".autogit", ".venv", "venv", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "dist", "build", "node_modules"]
-
