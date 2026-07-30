@@ -17,6 +17,10 @@ class RepositoryUnsafeError(AutoGitError):
     """Repository is not in a safe state for an automatic commit."""
 
 
+class GitOperationLockedError(AutoGitError):
+    """Another Git or AutoGit operation prevents a safe workflow."""
+
+
 class PreStagedChangesError(AutoGitError):
     """Changes had already been staged before AutoGit started."""
 

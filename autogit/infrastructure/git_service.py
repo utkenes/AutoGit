@@ -35,6 +35,17 @@ class GitService:
     def is_repository(self) -> bool:
         return self._run("rev-parse", "--is-inside-work-tree", check=False) == "true"
 
+    def initialize_repository(self) -> None:
+        self._run("init")
+
+    def set_main_branch(self) -> None:
+        self._run("branch", "-M", "main")
+
+    def add_remote(self, url: str) -> None:
+        if self.get_remote_url():
+            return
+        self._run("remote", "add", "origin", url)
+
     def get_repository_root(self) -> Path:
         if not self.is_repository():
             raise RepositoryNotFoundError(f"{self.working_directory} bir Git repository değil.")
@@ -46,6 +57,10 @@ class GitService:
             return None
         path = Path(value)
         return path.resolve() if path.is_absolute() else (self.working_directory / path).resolve()
+
+    def has_index_lock(self) -> bool:
+        git_dir = self._get_git_dir()
+        return git_dir is not None and (git_dir / "index.lock").exists()
 
     def get_current_branch(self) -> str | None:
         branch = self._run("symbolic-ref", "--short", "-q", "HEAD", check=False)
@@ -165,7 +180,10 @@ class GitService:
 
     def unstage_files(self, files: list[Path]) -> None:
         if files:
-            self._run("restore", "--staged", "--", *(str(path) for path in files))
+            if self.get_repository_state().has_head:
+                self._run("restore", "--staged", "--", *(str(path) for path in files))
+            else:
+                self._run("rm", "--cached", "--ignore-unmatch", "--", *(str(path) for path in files))
 
     def commit(self, message: str) -> str:
         self._run("commit", "-m", message)
