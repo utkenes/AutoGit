@@ -45,7 +45,7 @@ def build_container(working_directory: Path) -> Container:
         config=config,
         git=git,
         commit=commit,
-        planner=CommitPlanner(),
+        planner=CommitPlanner(root),
         status=StatusService(git, config),
         doctor=DoctorService(root, git, config, runner),
         watch=WatchService(root, config, commit, logger),

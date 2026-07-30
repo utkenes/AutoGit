@@ -95,6 +95,18 @@ class QualityCheckResult:
 
 
 @dataclass(frozen=True)
+class FixSuggestion:
+    """A low-risk remediation proposed after a failed quality check."""
+
+    title: str
+    explanation: str
+    command: tuple[str, ...] | None
+    risk_level: str
+    auto_fixable: bool
+    rerun_checks: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class SecretFinding:
     path: Path
     line_number: int
