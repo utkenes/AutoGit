@@ -33,6 +33,25 @@ Review the proposed groups, then choose approve, edit messages, or cancel.
 AutoGit only creates local commits after explicit approval. Push always requires
 a separate confirmation.
 
+## Feature-aware grouping
+
+AutoGit groups related source, test, configuration, and wiring changes using
+local filename, import, symbol, and identifier relationships. Each planned
+group includes a reason and confidence score in `autogit plan --json`.
+
+The defaults keep tests with their feature. Add these settings to
+`.autogit.toml` when you need a different review shape:
+
+```toml
+group_tests_with_feature = true
+grouping_relation_threshold = 8
+grouping_minimum_margin = 3
+max_group_files = 8
+```
+
+Wiring files such as `cli.py` and `container.py` never merge unrelated
+features; they are attached only when one feature has a clear score margin.
+
 ## Commands
 
 - `autogit start` — guided planning, checks, approved commits, and optional push.
