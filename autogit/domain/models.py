@@ -45,6 +45,17 @@ class CommitPlan:
 
 
 @dataclass(frozen=True)
+class CommitGroup:
+    """A coherent, user-reviewable group of files for one commit."""
+
+    files: tuple[ChangedFile, ...]
+    suggested_message: str
+    commit_type: str
+    scope: str | None
+    reason: str
+
+
+@dataclass(frozen=True)
 class CommitContext:
     files: list[ChangedFile]
     diff_stat: str
