@@ -15,6 +15,10 @@ check_interval_seconds = 5
 auto_push = false
 auto_fix = false
 auto_commit = false
+group_tests_with_feature = true
+grouping_relation_threshold = 8
+grouping_minimum_margin = 3
+max_group_files = 8
 max_fix_attempts = 1
 run_tests = false
 run_lint = false
@@ -62,6 +66,10 @@ class AutoGitConfig(BaseModel):
     auto_push: bool = False
     auto_fix: bool = False
     auto_commit: bool = False
+    group_tests_with_feature: bool = True
+    grouping_relation_threshold: int = Field(default=8, ge=1, le=30)
+    grouping_minimum_margin: int = Field(default=3, ge=0, le=20)
+    max_group_files: int = Field(default=8, ge=1, le=50)
     max_fix_attempts: int = Field(default=1, ge=0, le=3)
     run_tests: bool = False
     run_lint: bool = False
@@ -117,6 +125,10 @@ def update_config(repository_root: Path, key: str, raw_value: str) -> AutoGitCon
         "auto_push": bool,
         "auto_fix": bool,
         "auto_commit": bool,
+        "group_tests_with_feature": bool,
+        "grouping_relation_threshold": int,
+        "grouping_minimum_margin": int,
+        "max_group_files": int,
         "max_fix_attempts": int,
         "run_tests": bool,
         "run_lint": bool,
@@ -168,6 +180,10 @@ def _write_config(repository_root: Path, config: AutoGitConfig) -> None:
         "auto_push": str(config.auto_push).lower(),
         "auto_fix": str(config.auto_fix).lower(),
         "auto_commit": str(config.auto_commit).lower(),
+        "group_tests_with_feature": str(config.group_tests_with_feature).lower(),
+        "grouping_relation_threshold": str(config.grouping_relation_threshold),
+        "grouping_minimum_margin": str(config.grouping_minimum_margin),
+        "max_group_files": str(config.max_group_files),
         "max_fix_attempts": str(config.max_fix_attempts),
         "run_tests": str(config.run_tests).lower(),
         "run_lint": str(config.run_lint).lower(),

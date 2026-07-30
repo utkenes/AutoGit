@@ -316,6 +316,7 @@ def plan_command(
                     "message": group.suggested_message,
                     "files": [str(file.path) for file in group.files],
                     "reason": group.reason,
+                    "confidence": group.confidence,
                 }
                 for group in groups
             ],

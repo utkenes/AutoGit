@@ -88,6 +88,7 @@ def test_plan_json_is_machine_readable(repository: Path) -> None:
     payload = json.loads(result.output)
     assert payload["repository"]["root"] == str(repository)
     assert payload["groups"][0]["type"] == "feat"
+    assert payload["groups"][0]["confidence"] > 0
 
 
 def test_undo_restores_last_unpushed_start_workflow(repository: Path) -> None:

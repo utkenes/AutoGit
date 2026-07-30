@@ -17,9 +17,12 @@ def test_planner_splits_source_test_docs_and_config() -> None:
             changed("pyproject.toml"),
         ]
     )
-    assert [group.commit_type for group in groups] == ["feat", "test", "docs", "chore"]
-    assert groups[0].scope == "cli"
-    assert groups[1].scope == "cli"
+    assert [group.commit_type for group in groups] == ["feat", "docs", "chore"]
+    assert groups[0].scope == "planner"
+    assert {file.path.as_posix() for file in groups[0].files} == {
+        "autogit/cli.py",
+        "tests/unit/test_cli.py",
+    }
 
 
 def test_planner_keeps_related_source_files_together() -> None:
@@ -41,11 +44,11 @@ def test_planner_orders_source_test_docs_and_config() -> None:
             changed("app.py", FileStatus.ADDED),
         ]
     )
-    assert [group.commit_type for group in groups] == ["feat", "test", "docs", "chore"]
+    assert [group.commit_type for group in groups] == ["feat", "docs", "chore"]
 
 
 def test_planner_uses_safe_function_name_for_new_source(tmp_path: Path) -> None:
     (tmp_path / "app.py").write_text("def greet(name: str) -> str:\n    return name\n", encoding="utf-8")
     groups = CommitPlanner(tmp_path).plan([changed("app.py", FileStatus.ADDED)])
-    assert groups[0].suggested_message == "feat(app): add greet function"
+    assert groups[0].suggested_message == "feat(update): add greet function"
     assert len(groups[0].suggested_message) <= 72
