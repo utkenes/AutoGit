@@ -17,6 +17,7 @@ from autogit.domain.exceptions import (
 from autogit.domain.models import (
     ChangedFile,
     CommitContext,
+    CommitGroup,
     CommitPlan,
     CommitResult,
     FileStatus,
@@ -24,6 +25,7 @@ from autogit.domain.models import (
 )
 from autogit.domain.protocols import CommitMessageProvider, SecretScannerProtocol
 from autogit.infrastructure.git_service import GitService
+from autogit.infrastructure.operation_lock import AutoGitOperationLock
 
 
 class CommitService:
@@ -49,7 +51,47 @@ class CommitService:
         """Return the commit plan without staging, checking, or writing anything."""
         return self._prepare()
 
+    def prepare(self, *, allow_initial_commit: bool = False) -> CommitPlan:
+        """Build a safe plan for the interactive workflow."""
+        return self._prepare(allow_initial_commit=allow_initial_commit)
+
+    def execute_groups(
+        self, groups: list[CommitGroup], *, allow_initial_commit: bool = False, lock_held: bool = False
+    ) -> list[CommitResult]:
+        """Run approved groups sequentially, without pushing."""
+        if lock_held:
+            return self._execute_groups(groups, allow_initial_commit=allow_initial_commit)
+        with AutoGitOperationLock(self.root):
+            return self._execute_groups(groups, allow_initial_commit=allow_initial_commit)
+
+    def _execute_groups(
+        self, groups: list[CommitGroup], *, allow_initial_commit: bool
+    ) -> list[CommitResult]:
+        plan = self._prepare(allow_initial_commit=allow_initial_commit)
+        allowed_paths = {file.path for file in plan.candidates}
+        if not groups or any(file.path not in allowed_paths for group in groups for file in group.files):
+            raise SecurityViolationError("Commit planı güvenli aday dosyalarla eşleşmiyor.")
+        quality_results = self.quality.run()
+        for quality_result in quality_results:
+            self.logger.info("%s exit=%s", quality_result.check.name, quality_result.exit_code)
+
+        results: list[CommitResult] = []
+        for group in groups:
+            staged_by_autogit = self.git.stage_files([file.path for file in group.files])
+            try:
+                self._scan_staged_files(list(group.files))
+                commit_hash = self.git.commit(group.suggested_message)
+            except Exception:
+                self.git.unstage_files(staged_by_autogit)
+                raise
+            results.append(CommitResult(group.suggested_message, commit_hash, [file.path for file in group.files]))
+        return results
+
     def execute(self) -> tuple[CommitResult, PushResult]:
+        with AutoGitOperationLock(self.root):
+            return self._execute()
+
+    def _execute(self) -> tuple[CommitResult, PushResult]:
         plan = self._prepare()
         staged_by_autogit = self.git.stage_files([file.path for file in plan.candidates])
         committed = False
@@ -79,8 +121,10 @@ class CommitService:
         self.logger.info("Commit created hash=%s message=%s", commit_hash, message)
         return result, self._push_if_enabled()
 
-    def _prepare(self) -> CommitPlan:
-        self._ensure_repository_is_safe()
+    def _prepare(self, *, allow_initial_commit: bool = False) -> CommitPlan:
+        if self.git.has_index_lock():
+            raise RepositoryUnsafeError("Git index.lock bulundu; başka bir Git işlemi tamamlanmadan devam edilemez.")
+        self._ensure_repository_is_safe(allow_initial_commit=allow_initial_commit)
         pre_staged = self.git.get_staged_files()
         if pre_staged:
             raise PreStagedChangesError([str(file.path) for file in pre_staged])
@@ -91,14 +135,16 @@ class CommitService:
         candidates = [file for file in files if self._may_stage(file.path)]
         excluded = [file for file in files if file not in candidates]
         if not candidates:
+            if all(file.path.parts and file.path.parts[0] in {".git", ".autogit"} for file in files):
+                raise NothingToCommitError("Commit oluşturulacak değişiklik bulunamadı.")
             raise SecurityViolationError("Güvenli biçimde stage edilebilecek dosya bulunamadı.")
         return CommitPlan(candidates, excluded)
 
-    def _ensure_repository_is_safe(self) -> None:
+    def _ensure_repository_is_safe(self, *, allow_initial_commit: bool = False) -> None:
         state = self.git.get_repository_state()
         if not state.is_repository:
             raise RepositoryUnsafeError("AutoGit bir Git repository içinde çalışmalıdır.")
-        if not state.has_head:
+        if not state.has_head and not allow_initial_commit:
             raise RepositoryUnsafeError("AutoGit ilk commit oluşmadan önce çalışmaz.")
         if state.is_detached_head:
             raise RepositoryUnsafeError(
@@ -138,6 +184,8 @@ class CommitService:
             raise SecurityViolationError(f"Gizli bilgi bulundu: {detail}. Dosyayı düzeltin veya .gitignore içine alın.")
 
     def _may_stage(self, path: Path) -> bool:
+        if path.parts and path.parts[0] in {".git", ".autogit"}:
+            return False
         name = path.name.lower()
         blocked = {
             ".env", ".env.local", ".env.development", ".env.production", ".env.test",

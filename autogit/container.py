@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from autogit.application.commit_planner import CommitPlanner
 from autogit.application.commit_service import CommitService
 from autogit.application.doctor_service import DoctorService
 from autogit.application.quality_service import QualityService
@@ -24,6 +25,7 @@ class Container:
     config: AutoGitConfig
     git: GitService
     commit: CommitService
+    planner: CommitPlanner
     status: StatusService
     doctor: DoctorService
     watch: WatchService
@@ -43,8 +45,8 @@ def build_container(working_directory: Path) -> Container:
         config=config,
         git=git,
         commit=commit,
+        planner=CommitPlanner(),
         status=StatusService(git, config),
         doctor=DoctorService(root, git, config, runner),
         watch=WatchService(root, config, commit, logger),
     )
-
