@@ -13,8 +13,8 @@ from autogit.domain.exceptions import ConfigurationError
 DEFAULT_CONFIG = """debounce_seconds = 60
 check_interval_seconds = 5
 auto_push = false
-run_tests = true
-run_lint = true
+run_tests = false
+run_lint = false
 run_type_check = false
 commit_message_provider = "local"
 
@@ -57,8 +57,8 @@ class AutoGitConfig(BaseModel):
     debounce_seconds: int = Field(default=60, ge=1, le=86_400)
     check_interval_seconds: int = Field(default=5, ge=1, le=3_600)
     auto_push: bool = False
-    run_tests: bool = True
-    run_lint: bool = True
+    run_tests: bool = False
+    run_lint: bool = False
     run_type_check: bool = False
     commit_message_provider: str = "local"
     test: CommandConfig = Field(default_factory=lambda: CommandConfig(command="python -m pytest"))
@@ -132,10 +132,46 @@ def update_config(repository_root: Path, key: str, raw_value: str) -> AutoGitCon
         updated = AutoGitConfig.model_validate(updated.model_dump())
     except ValidationError as error:
         raise ConfigurationError(str(error)) from error
-    lines = DEFAULT_CONFIG.splitlines()
-    prefix = f"{key} = "
-    replacement = f"{key} = {str(value).lower() if isinstance(value, bool) else value}"
-    content = "\n".join(replacement if line.startswith(prefix) else line for line in lines) + "\n"
-    config_path(repository_root).write_text(content, encoding="utf-8")
+    _write_config(repository_root, updated)
     return updated
 
+
+def configure_quality_command(repository_root: Path, key: str, command: str) -> AutoGitConfig:
+    """Enable a detected quality command and persist it in the config file."""
+    config = load_config(repository_root)
+    if key == "run_tests":
+        updated = config.model_copy(update={"run_tests": True, "test": CommandConfig(command=command)})
+    elif key == "run_lint":
+        updated = config.model_copy(update={"run_lint": True, "lint": CommandConfig(command=command)})
+    else:
+        raise ConfigurationError(f"Kalite komutu için desteklenmeyen ayar: {key}")
+    validated = AutoGitConfig.model_validate(updated.model_dump())
+    _write_config(repository_root, validated)
+    return validated
+
+
+def _write_config(repository_root: Path, config: AutoGitConfig) -> None:
+    """Serialize the supported configuration without adding a TOML dependency."""
+    lines = DEFAULT_CONFIG.splitlines()
+    replacements = {
+        "debounce_seconds": str(config.debounce_seconds),
+        "check_interval_seconds": str(config.check_interval_seconds),
+        "auto_push": str(config.auto_push).lower(),
+        "run_tests": str(config.run_tests).lower(),
+        "run_lint": str(config.run_lint).lower(),
+        "run_type_check": str(config.run_type_check).lower(),
+    }
+    command_replacements = [config.test.command, config.lint.command, config.type_check.command]
+    command_index = 0
+    rendered: list[str] = []
+    for line in lines:
+        key, separator, _ = line.partition(" = ")
+        if separator and key in replacements:
+            rendered.append(f"{key} = {replacements[key]}")
+        elif line.startswith("command = "):
+            command = command_replacements[command_index].replace('"', '\\"')
+            rendered.append(f'command = "{command}"')
+            command_index += 1
+        else:
+            rendered.append(line)
+    config_path(repository_root).write_text("\n".join(rendered) + "\n", encoding="utf-8")
