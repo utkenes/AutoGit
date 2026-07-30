@@ -1,6 +1,9 @@
 debounce_seconds = 60
 check_interval_seconds = 5
 auto_push = false
+auto_fix = false
+auto_commit = false
+max_fix_attempts = 1
 run_tests = false
 run_lint = false
 run_type_check = false

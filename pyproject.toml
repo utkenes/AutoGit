@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["mypy>=1.11", "pytest>=8.3", "pytest-cov>=5.0", "ruff>=0.6"]
+dev = ["build>=1.2", "mypy>=1.11", "pytest>=8.3", "pytest-cov>=5.0", "ruff>=0.6"]
 
 [project.scripts]
 autogit = "autogit.cli:app"
@@ -44,3 +44,11 @@ python_version = "3.12"
 strict = true
 warn_unreachable = true
 exclude = ["tests"]
+
+[tool.coverage.run]
+omit = [
+  "autogit/__main__.py",
+  "autogit/cli.py",
+  "autogit/application/watch_service.py",
+  "autogit/infrastructure/file_watcher.py",
+]
