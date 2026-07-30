@@ -27,6 +27,9 @@ class SecretScanner:
         SecretPattern("AWS Access Key", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
         SecretPattern("Private key", re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----")),
         SecretPattern("Bearer token", re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._-]{12,}")),
+        SecretPattern("Database URL", re.compile(r"(?i)\b(?:postgres|mysql|mongodb(?:\+srv)?):\/\/[^\s'\"]+")),
+        SecretPattern("npm auth token", re.compile(r"(?i)//[^\s:]+:_authToken\s*=\s*[^\s]{8,}")),
+        SecretPattern("PyPI credential", re.compile(r"(?i)(?:username|password)\s*=\s*[^\s]{8,}")),
         SecretPattern(
             "Database password",
             re.compile(r"(?i)(?:database_url|password|passwd|pwd)\s*[:=]\s*['\"]?[^\s'\"]{8,}"),
