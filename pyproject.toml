@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "AutoGit"
 version = "0.1.0"
-description = "Güvenli, debounce tabanlı otomatik Git commit CLI aracı"
+description = "Guvenli, debounce tabanlı otomatik Git commit CLI araci"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
