@@ -29,12 +29,15 @@ commit_message_provider = "local"
 
 [test]
 command = "python -m pytest"
+timeout_seconds = 300
 
 [lint]
 command = "python -m ruff check ."
+timeout_seconds = 300
 
 [type_check]
 command = "python -m mypy ."
+timeout_seconds = 300
 
 [security]
 block_env_files = true
@@ -49,6 +52,7 @@ ignored_paths = [".git", ".autogit", ".venv", "venv", "__pycache__", ".pytest_ca
 
 class CommandConfig(BaseModel):
     command: str = Field(min_length=1)
+    timeout_seconds: int = Field(default=300, ge=1, le=3_600)
 
 
 class SecurityConfig(BaseModel):
@@ -192,7 +196,13 @@ def _write_config(repository_root: Path, config: AutoGitConfig) -> None:
         "run_type_check": str(config.run_type_check).lower(),
     }
     command_replacements = [config.test.command, config.lint.command, config.type_check.command]
+    timeout_replacements = [
+        config.test.timeout_seconds,
+        config.lint.timeout_seconds,
+        config.type_check.timeout_seconds,
+    ]
     command_index = 0
+    timeout_index = 0
     rendered: list[str] = []
     for line in lines:
         key, separator, _ = line.partition(" = ")
@@ -202,6 +212,9 @@ def _write_config(repository_root: Path, config: AutoGitConfig) -> None:
             command = command_replacements[command_index].replace('"', '\\"')
             rendered.append(f'command = "{command}"')
             command_index += 1
+        elif line.startswith("timeout_seconds = "):
+            rendered.append(f"timeout_seconds = {timeout_replacements[timeout_index]}")
+            timeout_index += 1
         else:
             rendered.append(line)
     _atomic_write(config_path(repository_root), "\n".join(rendered) + "\n")
