@@ -15,12 +15,14 @@ it does not replace a graphical Git client or host repositories.
 ## Install
 
 ```bash
-pipx install autogit
-# or, from a checkout during the beta
-pip install .
+git clone <your-AutoGit-checkout>
+cd AutoGit
+python -m pip install .
 ```
 
-Python 3.12+ is required. Verify the installation with `autogit --version`.
+Python 3.12+ is required. The package is intended to be installed from a local
+checkout for v0.1; it does not claim a public package-index release. Verify the
+installation with `autogit --version`.
 
 ## 60-second quick start
 
@@ -29,7 +31,10 @@ cd path/to/your/git-project
 autogit start
 ```
 
-Review the proposed groups, then choose approve, edit messages, or cancel.
+Review the proposed groups, then choose **A**ccept, **E**dit, locally
+**R**egenerate, or **C**ancel. Edited messages must use `type: subject` or
+`type(scope): subject`; line breaks, control characters, unknown types, and
+subjects ending in a period are rejected before Git is invoked.
 AutoGit only creates local commits after explicit approval. Push always requires
 a separate confirmation.
 
@@ -70,6 +75,10 @@ recommended workflow.
 
 ## Quality recovery
 
+Each configured test, lint, or type-check command has a local `timeout_seconds`
+setting (300 seconds by default). Commands run without a shell; a timeout or a
+non-zero exit code stops the workflow before AutoGit stages any files.
+
 When a supported linter fails, AutoGit can suggest a low-risk fix such as
 `python -m ruff check . --fix`. It shows the command and requires approval
 unless `--auto` was selected. Test logic failures are never automatically
@@ -84,6 +93,11 @@ rewritten. A workflow applies an automatic fix at most once by default.
 - `.git` and `.autogit` are excluded from commit candidates.
 - No source code, diffs, repository URLs, or secrets are sent to an external
   server in v0.1.0; analysis runs locally.
+
+`autogit doctor --repair` and `autogit start --repair` are intentionally
+conservative in v0.1: they describe the lock-repair policy but never delete a
+Git lock. Confirm that no Git operation is active before resolving a stale lock
+manually.
 
 ## Supported checks
 
