@@ -11,6 +11,10 @@ from autogit.domain.models import ChangedFile, CommitContext, FileStatus
 VALID_PREFIXES = {
     "feat", "fix", "docs", "style", "refactor", "test", "build", "ci", "chore", "perf", "revert"
 }
+MAX_MESSAGE_LENGTH = 72
+_MESSAGE_PATTERN = re.compile(
+    r"(?P<type>" + "|".join(sorted(VALID_PREFIXES)) + r")(?:\((?P<scope>[^()\s\x00-\x1f]+)\))?: (?P<subject>[^\r\n\x00-\x1f].*)"
+)
 
 
 class LocalCommitMessageProvider:
@@ -26,9 +30,29 @@ class LocalCommitMessageProvider:
             raise CommitMessageError("Üretilen commit mesajı Conventional Commits biçiminde değil.")
         return message
 
-    @staticmethod
-    def is_valid(message: str) -> bool:
-        return bool(re.fullmatch(r"(?:" + "|".join(VALID_PREFIXES) + r")(?:\([^)]+\))?: .+", message))
+    @classmethod
+    def validation_error(cls, message: str) -> str | None:
+        """Return a safe, user-facing reason when a message is invalid."""
+        if not message:
+            return "Commit mesajı boş olamaz."
+        if len(message) > MAX_MESSAGE_LENGTH:
+            return f"Commit mesajı en fazla {MAX_MESSAGE_LENGTH} karakter olabilir."
+        if any(ord(character) < 32 or ord(character) == 127 for character in message):
+            return "Commit mesajı satır sonu veya kontrol karakteri içeremez."
+        match = _MESSAGE_PATTERN.fullmatch(message)
+        if match is None:
+            allowed = ", ".join(sorted(VALID_PREFIXES))
+            return f"Biçim type: subject veya type(scope): subject olmalı. Türler: {allowed}."
+        subject = match.group("subject").strip()
+        if not subject:
+            return "Commit mesajı konusu boş olamaz."
+        if subject.endswith("."):
+            return "Commit mesajı konusu nokta ile bitmemeli."
+        return None
+
+    @classmethod
+    def is_valid(cls, message: str) -> bool:
+        return cls.validation_error(message) is None
 
     def _prefix(self, context: CommitContext) -> str:
         paths = [file.path for file in context.files]

@@ -25,9 +25,13 @@ from autogit.domain.exceptions import (
 )
 from autogit.domain.models import CheckState, CommitGroup, CommitResult
 from autogit.infrastructure.command_runner import CommandRunner
+from autogit.infrastructure.console_encoding import configure_windows_utf8
 from autogit.infrastructure.git_service import GitService
 from autogit.infrastructure.logging_setup import close_logger
 from autogit.infrastructure.operation_lock import AutoGitOperationLock
+from autogit.providers.local_commit_provider import LocalCommitMessageProvider
+
+configure_windows_utf8()
 
 app = typer.Typer(help="Güvenli ve onaylı Git commit asistanı.", no_args_is_help=True)
 config_app = typer.Typer(help="Yapılandırmayı gösterir veya değiştirir.", no_args_is_help=False)
@@ -95,16 +99,32 @@ def _show_plan(groups: list[CommitGroup]) -> None:
     table.add_column("#", style="cyan", justify="right")
     table.add_column("Önerilen mesaj", style="green")
     table.add_column("Dosyalar")
+    table.add_column("Gerekçe")
     for index, group in enumerate(groups, start=1):
-        table.add_row(str(index), group.suggested_message, "\n".join(str(file.path) for file in group.files))
+        table.add_row(
+            str(index),
+            group.suggested_message,
+            "\n".join(str(file.path) for file in group.files),
+            group.reason,
+        )
     console.print(table)
 
 
-def _edit_messages(groups: list[CommitGroup]) -> list[CommitGroup]:
+def _edit_messages(groups: list[CommitGroup]) -> list[CommitGroup] | None:
     edited: list[CommitGroup] = []
     for group in groups:
-        message = typer.prompt("Commit mesajı", default=group.suggested_message).strip()
-        edited.append(replace(group, suggested_message=message or group.suggested_message))
+        while True:
+            message = typer.prompt(
+                "Commit mesajı (C: iptal)", default=group.suggested_message
+            ).strip()
+            if message.upper() == "C":
+                return None
+            candidate = message or group.suggested_message
+            error = LocalCommitMessageProvider.validation_error(candidate)
+            if error is None:
+                edited.append(replace(group, suggested_message=candidate))
+                break
+            console.print(f"[red]Geçersiz commit mesajı:[/] {error}")
     return edited
 
 
@@ -155,10 +175,13 @@ def start(
     path: Annotated[Path, typer.Option("--path", "-p", exists=True, file_okay=False)] = Path.cwd(),
     auto: Annotated[bool, typer.Option("--auto", help="Yalnızca güvenli onayları otomatikleştirir.")] = False,
     dry_run: Annotated[bool, typer.Option("--dry-run", help="Git veya config durumunu değiştirmez.")] = False,
+    repair: Annotated[bool, typer.Option("--repair", help="Yalnızca güvenli tanılama yapar; Git lock silmez.")] = False,
 ) -> None:
     """Analyze changes, show a plan, and commit only after confirmation."""
     root = _ensure_repository(path, allow_setup=not dry_run)
     git = GitService(root, CommandRunner())
+    if repair:
+        console.print("Lock onarımı v0.1'de otomatik yapılmaz; doctor çıktısındaki yolu doğrulayın.")
     if dry_run:
         container = _container(root, read_only=True)
         try:
@@ -194,27 +217,39 @@ def start(
                 return
             groups = container.planner.plan(plan.candidates)  # type: ignore[attr-defined]
             _show_plan(groups)
-            if auto:
-                _print_auto_mode()
-                choice = "A"
-            else:
-                choice = typer.prompt("[A] Onayla  [E] Mesajları düzenle  [C] İptal", default="C").upper()
-            if choice == "C":
-                console.print("İşlem iptal edildi.")
-                return
-            if choice == "E":
-                groups = _edit_messages(groups)
-                _show_plan(groups)
-                if not typer.confirm("Düzenlenen plan onaylansın mı?", default=False):
+            while True:
+                if auto:
+                    _print_auto_mode()
+                    choice = "A"
+                else:
+                    choice = typer.prompt(
+                        "[A] Onayla  [E] Mesajları düzenle  [R] Yerelde yeniden oluştur  [C] İptal",
+                        default="C",
+                    ).upper()
+                if choice == "C":
                     console.print("İşlem iptal edildi.")
                     return
-            elif choice != "A":
-                console.print("Geçersiz seçim; işlem iptal edildi.")
-                return
+                if choice == "R":
+                    groups = container.planner.plan(plan.candidates)  # type: ignore[attr-defined]
+                    _show_plan(groups)
+                    continue
+                if choice == "E":
+                    edited = _edit_messages(groups)
+                    if edited is None:
+                        console.print("İşlem iptal edildi.")
+                        return
+                    groups = edited
+                    _show_plan(groups)
+                    continue
+                if choice == "A":
+                    break
+                console.print("Geçersiz seçim; A, E, R veya C kullanın.")
             base_commit = container.git.get_head()  # type: ignore[attr-defined]
             results = _run_groups_with_recovery(container, groups, allow_initial, auto)
             if base_commit is not None:
                 LastRunService(root, container.git).record(base_commit, results)  # type: ignore[attr-defined]
+            else:
+                console.print("Initial commit geri alma v0.1'de desteklenmez.")
             console.print(f"[green]{len(results)} local commit oluşturuldu.[/]")
             if container.git.get_remote_url():  # type: ignore[attr-defined]
                 for result in results:
@@ -233,7 +268,8 @@ def start(
                     console.print(f"[red]Push başarısız:[/] {error}")
                     console.print("Local commitleriniz korunuyor.")
                     return
-                LastRunService(root, container.git).mark_pushed()  # type: ignore[attr-defined]
+                if base_commit is not None:
+                    LastRunService(root, container.git).mark_pushed()  # type: ignore[attr-defined]
                 console.print(f"[green]{len(results)} commit push edildi.[/]")
             else:
                 console.print("Commitler local repository'de bırakıldı. Push yapılmadı.")
@@ -312,6 +348,7 @@ def plan_command(
                 "remote": "origin" if container.git.get_remote_url() else None,  # type: ignore[attr-defined]
                 "upstream": container.git.get_upstream_branch(),  # type: ignore[attr-defined]
             },
+            "initial_commit": not state.has_head,
             "groups": [
                 {
                     "type": group.commit_type,
@@ -323,6 +360,11 @@ def plan_command(
                 }
                 for group in groups
             ],
+            "warnings": [
+                f"Excluded from safe staging: {file.path}" for file in (prepared.excluded_files if prepared else [])
+            ],
+            "quality_commands": _quality_commands(container),
+            "push_target": container.git.get_upstream_branch() or container.git.get_remote_url(),  # type: ignore[attr-defined]
             "quality": {
                 "tests_enabled": container.config.run_tests,  # type: ignore[attr-defined]
                 "lint_enabled": container.config.run_lint,  # type: ignore[attr-defined]
@@ -358,7 +400,7 @@ def undo(path: Annotated[Path, typer.Option("--path", "-p", exists=True, file_ok
 @app.command()
 def status(path: Annotated[Path, typer.Option("--path", "-p", exists=True, file_okay=False)] = Path.cwd()) -> None:
     """Show repository and AutoGit status."""
-    container = _container(path)
+    container = _container(path, read_only=True)
     table = Table(title="AutoGit Durumu")
     table.add_column("Alan", style="cyan")
     table.add_column("Değer")
@@ -388,9 +430,12 @@ def config_set(key: str, value: str, path: Annotated[Path, typer.Option("--path"
 
 
 @app.command()
-def doctor(path: Annotated[Path, typer.Option("--path", "-p", exists=True, file_okay=False)] = Path.cwd()) -> None:
+def doctor(
+    path: Annotated[Path, typer.Option("--path", "-p", exists=True, file_okay=False)] = Path.cwd(),
+    repair: Annotated[bool, typer.Option("--repair", help="Git lock silmez; yalnızca güvenli onarım politikasını bildirir.")] = False,
+) -> None:
     """Check installation and repository health."""
-    container = _container(path)
+    container = _container(path, read_only=True)
     table = Table(title="AutoGit Doctor")
     table.add_column("Durum")
     table.add_column("Kontrol")
@@ -399,6 +444,8 @@ def doctor(path: Annotated[Path, typer.Option("--path", "-p", exists=True, file_
         color = {CheckState.PASS: "green", CheckState.WARNING: "yellow", CheckState.ERROR: "red"}[check.state]
         table.add_row(f"[{color}]{check.state.value}[/]", check.name, check.detail)
     console.print(table)
+    if repair:
+        console.print("[yellow]Onarım uygulanmadı:[/] AutoGit Git lock dosyalarını otomatik silmez.")
 
 
 if __name__ == "__main__":
