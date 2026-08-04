@@ -80,7 +80,7 @@ def test_start_blocks_detached_head(repository: Path) -> None:
 
 def test_start_edits_message(repository: Path) -> None:
     (repository / "feature.py").write_text("value = 1\n", encoding="utf-8")
-    result = runner.invoke(app, ["start", "--path", str(repository)], input="n\nE\nfeat: custom message\ny\n")
+    result = runner.invoke(app, ["start", "--path", str(repository)], input="n\nE\nfeat: custom message\nA\n")
     assert result.exit_code == 0
     subject = subprocess.run(
         ["git", "log", "-1", "--pretty=%s"], cwd=repository, check=True, capture_output=True, text=True
@@ -146,6 +146,24 @@ def test_plan_json_is_machine_readable(repository: Path) -> None:
     assert payload["repository"]["root"] == str(repository)
     assert payload["groups"][0]["type"] == "feat"
     assert payload["groups"][0]["confidence"] > 0
+    assert payload["initial_commit"] is False
+    assert payload["warnings"] == []
+    assert payload["quality_commands"] == []
+    assert payload["push_target"] is None
+
+
+def test_start_rejects_invalid_edited_message(repository: Path) -> None:
+    (repository / "feature.py").write_text("value = 1\n", encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        ["start", "--path", str(repository)],
+        input="n\nE\nunknown: invalid\nC\n",
+    )
+
+    assert result.exit_code == 0
+    assert "Geçersiz commit mesajı" in result.output
+    assert _commit_count(repository) == 1
 
 
 def test_undo_restores_last_unpushed_start_workflow(repository: Path) -> None:

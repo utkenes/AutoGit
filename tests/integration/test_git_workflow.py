@@ -14,6 +14,7 @@ from autogit.domain.exceptions import (
     RepositoryUnsafeError,
     SecurityViolationError,
 )
+from autogit.domain.models import CommitGroup
 from autogit.infrastructure.command_runner import CommandRunner
 from autogit.infrastructure.git_service import GitService
 from autogit.infrastructure.secret_scanner import SecretScanner
@@ -120,6 +121,25 @@ def test_preview_does_not_stage_files(repository: Path) -> None:
     (repository / "preview.txt").write_text("safe\n", encoding="utf-8")
     plan = service(repository).preview()
     assert [file.path for file in plan.candidates] == [Path("preview.txt")]
+    assert not GitService(repository, CommandRunner()).has_staged_changes()
+
+
+def test_group_execution_rejects_duplicate_or_partial_plans(repository: Path) -> None:
+    (repository / "first.py").write_text("first = 1\n", encoding="utf-8")
+    (repository / "second.py").write_text("second = 2\n", encoding="utf-8")
+    commit_service = service(repository)
+    plan = commit_service.prepare()
+    duplicate = CommitGroup(
+        files=(plan.candidates[0], plan.candidates[0]),
+        suggested_message="feat: add first file",
+        commit_type="feat",
+        scope=None,
+        reason="test",
+    )
+
+    with pytest.raises(SecurityViolationError):
+        commit_service.execute_groups([duplicate])
+
     assert not GitService(repository, CommandRunner()).has_staged_changes()
 
 
