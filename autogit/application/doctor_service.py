@@ -146,6 +146,35 @@ class DoctorService:
             )
         )
 
+        state = self.git.get_repository_state()
+        active_operations = [
+            name
+            for name, active in (
+                ("merge", state.merge_in_progress),
+                ("rebase", state.rebase_in_progress),
+                ("cherry-pick", state.cherry_pick_in_progress),
+                ("revert", state.revert_in_progress),
+            )
+            if active
+        ]
+        checks.append(
+            self._check(
+                "Git operation",
+                not active_operations,
+                "Aktif Git işlemi yok." if not active_operations else ", ".join(active_operations),
+            )
+        )
+        locks = self.git.get_operation_locks()
+        checks.append(
+            self._check(
+                "Git locks",
+                not locks,
+                "Git lock bulunamadı."
+                if not locks
+                else "; ".join(f"{lock.path.name} ({lock.age_description})" for lock in locks),
+            )
+        )
+
         if self.config.auto_push and remote_url is None:
             checks.append(
                 DoctorCheck(
