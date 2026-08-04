@@ -8,6 +8,7 @@ from pathlib import Path
 from autogit.application.quality_service import QualityService
 from autogit.config import AutoGitConfig
 from autogit.domain.exceptions import (
+    CommitMessageError,
     NothingToCommitError,
     PreStagedChangesError,
     PushFailedError,
@@ -69,7 +70,8 @@ class CommitService:
     ) -> list[CommitResult]:
         plan = self._prepare(allow_initial_commit=allow_initial_commit)
         allowed_paths = {file.path for file in plan.candidates}
-        if not groups or any(file.path not in allowed_paths for group in groups for file in group.files):
+        planned_paths = [file.path for group in groups for file in group.files]
+        if not groups or set(planned_paths) != allowed_paths or len(planned_paths) != len(allowed_paths):
             raise SecurityViolationError("Commit planı güvenli aday dosyalarla eşleşmiyor.")
         quality_results = self.quality.run()
         for quality_result in quality_results:
@@ -77,10 +79,17 @@ class CommitService:
 
         results: list[CommitResult] = []
         for group in groups:
+            message_error = self.provider.validation_error(group.suggested_message)
+            if message_error:
+                raise CommitMessageError(message_error)
+            before_head = self.git.get_head()
             staged_by_autogit = self.git.stage_files([file.path for file in group.files])
             try:
+                self._verify_staged_group(group, staged_by_autogit)
                 self._scan_staged_files(list(group.files))
                 commit_hash = self.git.commit(group.suggested_message)
+                if self.git.get_head() != commit_hash or commit_hash == before_head:
+                    raise RepositoryUnsafeError("Commit sonrası HEAD beklenen şekilde ilerlemedi.")
             except Exception:
                 self.git.unstage_files(staged_by_autogit)
                 raise
@@ -181,6 +190,16 @@ class CommitService:
             )
             self.logger.warning("Secret scan blocked commit: %s", detail)
             raise SecurityViolationError(f"Gizli bilgi bulundu: {detail}. Dosyayı düzeltin veya .gitignore içine alın.")
+
+    def _verify_staged_group(self, group: CommitGroup, staged_by_autogit: list[Path]) -> None:
+        """Ensure Git staged precisely the paths that this workflow owns."""
+        expected = {file.path for file in group.files}
+        staged = {file.path for file in self.git.get_staged_files()}
+        if set(staged_by_autogit) != expected or staged != expected:
+            raise RepositoryUnsafeError(
+                "Stage alanı planlanan commit grubuyla eşleşmiyor; işlem durduruldu. "
+                "Partial staging v0.1'de desteklenmez."
+            )
 
     def _may_stage(self, path: Path) -> bool:
         if path.parts and path.parts[0] in {".git", ".autogit"}:
