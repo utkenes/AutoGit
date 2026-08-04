@@ -29,7 +29,7 @@ packages = ["autogit"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+addopts = "-q -p tests._pytest_tempdir"
 
 [tool.ruff]
 target-version = "py312"

@@ -8,6 +8,7 @@ from autogit.domain.exceptions import GitCommandError, RepositoryNotFoundError
 from autogit.domain.models import ChangedFile, FileStatus, GitStatus
 from autogit.domain.repository_state import RepositoryState
 from autogit.infrastructure.command_runner import CommandRunner
+from autogit.infrastructure.git_lock import GitLock, GitLockInspector
 from autogit.infrastructure.git_status_parser import GitStatusParser
 from autogit.utils.paths import is_within_root
 
@@ -17,6 +18,7 @@ class GitService:
         self.working_directory = working_directory.resolve()
         self.runner = runner
         self.status_parser = GitStatusParser()
+        self.lock_inspector = GitLockInspector()
 
     def _run(self, *arguments: str, check: bool = True) -> str:
         result = self.runner.run(["git", *arguments], self.working_directory)
@@ -42,6 +44,7 @@ class GitService:
         self._run("branch", "-M", "main")
 
     def add_remote(self, url: str) -> None:
+        self.require_no_operation_locks()
         if self.get_remote_url():
             return
         self._run("remote", "add", "origin", url)
@@ -59,8 +62,13 @@ class GitService:
         return path.resolve() if path.is_absolute() else (self.working_directory / path).resolve()
 
     def has_index_lock(self) -> bool:
-        git_dir = self._get_git_dir()
-        return git_dir is not None and (git_dir / "index.lock").exists()
+        return any(lock.kind == "index" for lock in self.get_operation_locks())
+
+    def get_operation_locks(self) -> list[GitLock]:
+        return self.lock_inspector.find(self._get_git_dir())
+
+    def require_no_operation_locks(self) -> None:
+        self.lock_inspector.require_unlocked(self._get_git_dir())
 
     def get_current_branch(self) -> str | None:
         branch = self._run("symbolic-ref", "--short", "-q", "HEAD", check=False)

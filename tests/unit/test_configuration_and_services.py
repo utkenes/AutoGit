@@ -44,6 +44,13 @@ def test_config_update_is_type_safe(tmp_path: Path) -> None:
         update_config(tmp_path, "auto_push", "yes")
 
 
+def test_config_updates_leave_no_temporary_file(tmp_path: Path) -> None:
+    write_default_config(tmp_path)
+    update_config(tmp_path, "auto_push", "true")
+
+    assert not list(tmp_path.glob(".autogit.toml.*.tmp"))
+
+
 def test_invalid_toml_is_reported(tmp_path: Path) -> None:
     (tmp_path / ".autogit.toml").write_text("debounce_seconds = [", encoding="utf-8")
     with pytest.raises(ConfigurationError):
@@ -89,4 +96,3 @@ def test_debounce_creates_one_commit_after_wait(tmp_path: Path) -> None:
     watcher._process_if_ready()
     watcher._process_if_ready()
     assert dummy.calls == 1
-

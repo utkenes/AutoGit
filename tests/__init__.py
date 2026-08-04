@@ -1,0 +1,1 @@
+"""AutoGit test package."""

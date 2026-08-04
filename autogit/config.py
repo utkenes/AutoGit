@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import tempfile
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -112,7 +114,7 @@ def load_config(repository_root: Path) -> AutoGitConfig:
 def write_default_config(repository_root: Path) -> Path:
     path = config_path(repository_root)
     if not path.exists():
-        path.write_text(DEFAULT_CONFIG, encoding="utf-8")
+        _atomic_write(path, DEFAULT_CONFIG)
     return path
 
 
@@ -202,4 +204,28 @@ def _write_config(repository_root: Path, config: AutoGitConfig) -> None:
             command_index += 1
         else:
             rendered.append(line)
-    config_path(repository_root).write_text("\n".join(rendered) + "\n", encoding="utf-8")
+    _atomic_write(config_path(repository_root), "\n".join(rendered) + "\n")
+
+
+def _atomic_write(path: Path, content: str) -> None:
+    """Persist config through a flushed sibling file and atomic replacement."""
+    temporary_path: Path | None = None
+    try:
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+        )
+        temporary_path = Path(temporary_name)
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as file:
+            file.write(content)
+            file.flush()
+            os.fsync(file.fileno())
+        os.replace(temporary_path, path)
+    except OSError as error:
+        if temporary_path is not None and temporary_path.exists():
+            try:
+                temporary_path.unlink()
+            except OSError as cleanup_error:
+                raise ConfigurationError(
+                    f"Yapılandırma yazılamadı ve geçici dosya temizlenemedi: {temporary_path}."
+                ) from cleanup_error
+        raise ConfigurationError(f"Yapılandırma atomik olarak yazılamadı: {path}.") from error
