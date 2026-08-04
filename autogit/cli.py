@@ -26,6 +26,7 @@ from autogit.domain.exceptions import (
 from autogit.domain.models import CheckState, CommitGroup, CommitResult
 from autogit.infrastructure.command_runner import CommandRunner
 from autogit.infrastructure.git_service import GitService
+from autogit.infrastructure.logging_setup import close_logger
 from autogit.infrastructure.operation_lock import AutoGitOperationLock
 
 app = typer.Typer(help="Güvenli ve onaylı Git commit asistanı.", no_args_is_help=True)
@@ -46,9 +47,9 @@ def main(version: Annotated[bool, typer.Option("--version", callback=_version_ca
     """Provide global CLI metadata."""
 
 
-def _container(path: Path) -> object:
+def _container(path: Path, *, read_only: bool = False) -> object:
     try:
-        return build_container(path)
+        return build_container(path, read_only=read_only)
     except AutoGitError as error:
         console.print(f"[red]Hata:[/] {error}")
         raise typer.Exit(1) from error
@@ -159,9 +160,9 @@ def start(
     root = _ensure_repository(path, allow_setup=not dry_run)
     git = GitService(root, CommandRunner())
     if dry_run:
-        container = _container(root)
+        container = _container(root, read_only=True)
         try:
-            plan = container.commit.prepare()  # type: ignore[attr-defined]
+            plan = container.commit.prepare(allow_initial_commit=True)  # type: ignore[attr-defined]
         except NothingToCommitError:
             console.print("Commit oluşturulacak değişiklik bulunamadı.")
             console.print("Dry run tamamlandı. Repository durumu değiştirilmedi.")
@@ -176,9 +177,7 @@ def start(
         return
     try:
         with AutoGitOperationLock(root):
-            if git.has_index_lock():
-                console.print("[red]Hata:[/] Git index.lock bulundu; başka bir Git işlemi tamamlanmadan devam edilemez.")
-                raise typer.Exit(1)
+            git.require_no_operation_locks()
             _configure_first_run(root, git)
             if not auto and not git.get_remote_url() and typer.confirm("Remote repository bulunamadı. URL eklemek ister misiniz?", default=False):
                 SetupService(root, git).add_remote(typer.prompt("Repository URL'si"))
@@ -244,12 +243,14 @@ def start(
     except AutoGitError as error:
         console.print(f"[red]Hata:[/] {error}")
         raise typer.Exit(1) from error
+    finally:
+        close_logger(root)
 
 
 @app.command()
 def init(path: Annotated[Path, typer.Option("--path", "-p", exists=True, file_okay=False)] = Path.cwd()) -> None:
     """Create the default AutoGit configuration for an existing repository."""
-    container = _container(path)
+    container = _container(path, read_only=True)
     target = write_default_config(container.root)  # type: ignore[attr-defined]
     console.print(f"[green]Başarılı:[/] {target}")
 
@@ -274,6 +275,8 @@ def commit(
     except AutoGitError as error:
         console.print(f"[yellow]{error}[/]")
         raise typer.Exit(1) from error
+    finally:
+        close_logger(container.root)  # type: ignore[attr-defined]
     console.print(f"[green]Commit oluşturuldu:[/] {result.commit_hash[:12]} {result.message}")
     console.print(push.detail)
 
@@ -291,7 +294,7 @@ def plan_command(
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
     """Show the commit plan, optionally as machine-readable JSON."""
-    container = _container(path)
+    container = _container(path, read_only=True)
     try:
         state = container.git.get_repository_state()  # type: ignore[attr-defined]
         prepared = container.commit.prepare(allow_initial_commit=not state.has_head)  # type: ignore[attr-defined]

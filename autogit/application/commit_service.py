@@ -122,8 +122,7 @@ class CommitService:
         return result, self._push_if_enabled()
 
     def _prepare(self, *, allow_initial_commit: bool = False) -> CommitPlan:
-        if self.git.has_index_lock():
-            raise RepositoryUnsafeError("Git index.lock bulundu; başka bir Git işlemi tamamlanmadan devam edilemez.")
+        self.git.require_no_operation_locks()
         self._ensure_repository_is_safe(allow_initial_commit=allow_initial_commit)
         pre_staged = self.git.get_staged_files()
         if pre_staged:

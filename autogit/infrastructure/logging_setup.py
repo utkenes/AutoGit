@@ -24,3 +24,10 @@ def create_logger(root: Path) -> logging.Logger:
         logger.addHandler(handler)
     return logger
 
+
+def close_logger(root: Path) -> None:
+    """Release file handles held by a completed AutoGit command."""
+    logger = logging.getLogger(f"autogit.{root}")
+    for handler in list(logger.handlers):
+        handler.close()
+        logger.removeHandler(handler)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -31,13 +32,13 @@ class Container:
     watch: WatchService
 
 
-def build_container(working_directory: Path) -> Container:
+def build_container(working_directory: Path, *, read_only: bool = False) -> Container:
     runner = CommandRunner()
     preliminary_git = GitService(working_directory, runner)
     root = preliminary_git.get_repository_root()
     config = load_config(root)
     git = GitService(root, runner)
-    logger = create_logger(root)
+    logger = _read_only_logger(root) if read_only else create_logger(root)
     quality = QualityService(root, config, runner)
     commit = CommitService(root, config, git, SecretScanner(), quality, LocalCommitMessageProvider(), logger)
     return Container(
@@ -50,3 +51,13 @@ def build_container(working_directory: Path) -> Container:
         doctor=DoctorService(root, git, config, runner),
         watch=WatchService(root, config, commit, logger),
     )
+
+
+def _read_only_logger(root: Path) -> logging.Logger:
+    """Return an in-memory logger for preview commands."""
+    logger = logging.getLogger(f"autogit.preview.{root}")
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    if not logger.handlers:
+        logger.addHandler(logging.NullHandler())
+    return logger

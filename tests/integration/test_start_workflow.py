@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import logging
+import os
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -27,6 +30,13 @@ def repository(tmp_path: Path) -> Path:
     return tmp_path
 
 
+@pytest.fixture()
+def empty_repository(tmp_path: Path) -> Path:
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    (tmp_path / "feature.py").write_text("value = 1\n", encoding="utf-8")
+    return tmp_path
+
+
 def test_start_cancellation_does_not_commit(repository: Path) -> None:
     (repository / "feature.py").write_text("value = 1\n", encoding="utf-8")
     result = runner.invoke(app, ["start", "--path", str(repository)], input="n\nC\n")
@@ -41,6 +51,16 @@ def test_start_approved_plan_commits_without_push(repository: Path) -> None:
     assert result.exit_code == 0
     assert "local commit oluşturuldu" in result.output
     assert _commit_count(repository) == 2
+
+
+def test_start_releases_log_file_handlers(repository: Path) -> None:
+    (repository / "feature.py").write_text("value = 1\n", encoding="utf-8")
+
+    result = runner.invoke(app, ["start", "--path", str(repository)], input="n\nA\n")
+
+    assert result.exit_code == 0
+    logger = logging.getLogger(f"autogit.{repository.resolve()}")
+    assert not logger.handlers
 
 
 def test_start_writes_missing_config_before_showing_plan(repository: Path) -> None:
@@ -75,9 +95,46 @@ def test_start_dry_run_keeps_head_and_index(repository: Path) -> None:
     after = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repository, check=True, capture_output=True, text=True).stdout
     staged = subprocess.run(["git", "diff", "--cached", "--name-only"], cwd=repository, check=True, capture_output=True, text=True).stdout
     assert result.exit_code == 0
-    assert "Dry run tamamlandı" in result.output
+    assert "Dry run" in result.output
     assert before == after
     assert staged == ""
+
+
+def test_dry_run_is_side_effect_free_for_initial_repository(empty_repository: Path) -> None:
+    result = runner.invoke(app, ["start", "--path", str(empty_repository), "--dry-run"])
+
+    assert result.exit_code == 0
+    assert "Dry run" in result.output
+    assert not (empty_repository / ".autogit").exists()
+    assert not (empty_repository / ".autogit.toml").exists()
+    assert not (empty_repository / ".git" / "index.lock").exists()
+    assert not (empty_repository / ".git" / "config.lock").exists()
+
+
+def test_plan_is_side_effect_free_for_initial_repository(empty_repository: Path) -> None:
+    result = runner.invoke(app, ["plan", "--path", str(empty_repository), "--json"])
+
+    assert result.exit_code == 0
+    assert '"groups"' in result.output
+    assert not (empty_repository / ".autogit").exists()
+    assert not (empty_repository / ".autogit.toml").exists()
+
+
+@pytest.mark.parametrize("lock_name", ["index.lock", "config.lock"])
+def test_start_reports_git_locks_without_removing_them(repository: Path, lock_name: str) -> None:
+    lock = repository / ".git" / lock_name
+    lock.write_text("held", encoding="utf-8")
+    old = time.time() - 120
+    os.utime(lock, (old, old))
+
+    result = runner.invoke(app, ["start", "--path", str(repository)])
+    output = result.output.replace("\n", "")
+
+    assert result.exit_code == 1
+    assert lock_name in output
+    assert "2 dakika" in output
+    assert "otomatik silmez" in output
+    assert lock.exists()
 
 
 def test_plan_json_is_machine_readable(repository: Path) -> None:
